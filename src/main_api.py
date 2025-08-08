@@ -1,4 +1,8 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+from starlette.requests import Request
 from pydantic import BaseModel
 from typing import List
 from VectorStoreInAtls import create_vector_and_store_in_atlas
@@ -19,6 +23,25 @@ logger = logging.getLogger(__name__)
 # -----------------------------
 app = FastAPI()
 embedding_model = None  # will be set on startup
+
+# -----------------------------
+# Validation Error Handler
+# -----------------------------
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    def sanitize_error(err):
+        if "ctx" in err:
+            for key, value in err["ctx"].items():
+                if isinstance(value, bytes):
+                    err["ctx"][key] = "<binary data>"
+        return err
+
+    cleaned_errors = [sanitize_error(err) for err in exc.errors()]
+
+    return JSONResponse(
+        status_code=422,
+        content={"detail": jsonable_encoder(cleaned_errors)},
+    )
 
 # -----------------------------
 # Request Models
@@ -91,7 +114,7 @@ async def create_vectors(
             db_name=db_name,
             collection_name=collection_name,
             embedding_model=embedding_model,
-            original_filenames=original_filenames  # ✅ New argument passed
+            original_filenames=original_filenames
         )
 
         return {
