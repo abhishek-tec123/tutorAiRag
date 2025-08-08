@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List
 from VectorStoreInAtls import create_vector_and_store_in_atlas
 from SimilaritySearch import retrieve_and_generate_llm_response
 from langchain_huggingface import HuggingFaceEmbeddings
 import logging
+import os
+import tempfile
 
 # -----------------------------
 # Logging Setup
@@ -23,7 +25,7 @@ embedding_model = None  # will be set on startup
 # -----------------------------
 class VectorRequest(BaseModel):
     file_paths: List[str]
-    class_: str  # use class_ to avoid Python keyword conflict
+    class_: str
     subject: str
 
 class SearchRequest(BaseModel):
@@ -54,22 +56,42 @@ def map_to_db_and_collection(class_: str, subject: str):
     return db_name, collection_name
 
 # -----------------------------
-# Routes
+# Health Check
 # -----------------------------
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
+# -----------------------------
+# Create Vectors Route
+# -----------------------------
 @app.post("/create_vectors")
-def create_vectors(request: VectorRequest):
+async def create_vectors(
+    class_: str = Form(...),
+    subject: str = Form(...),
+    files: List[UploadFile] = File(...)
+):
     try:
-        db_name, collection_name = map_to_db_and_collection(request.class_, request.subject)
+        db_name, collection_name = map_to_db_and_collection(class_, subject)
+
+        file_inputs = []
+        original_filenames = []
+
+        # Save uploaded files to temp files
+        for file in files:
+            suffix = os.path.splitext(file.filename)[-1] or ".tmp"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                content = await file.read()
+                tmp.write(content)
+                file_inputs.append(tmp.name)
+                original_filenames.append(file.filename)
 
         summary = create_vector_and_store_in_atlas(
-            file_inputs=request.file_paths,
+            file_inputs=file_inputs,
             db_name=db_name,
             collection_name=collection_name,
-            embedding_model=embedding_model
+            embedding_model=embedding_model,
+            original_filenames=original_filenames  # ✅ New argument passed
         )
 
         return {
@@ -82,6 +104,9 @@ def create_vectors(request: VectorRequest):
         logger.error(f"[!] Error in /create_vectors: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# -----------------------------
+# Search Route
+# -----------------------------
 @app.post("/search")
 def search_and_respond(request: SearchRequest):
     try:

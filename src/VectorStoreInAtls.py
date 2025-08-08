@@ -57,7 +57,13 @@ def get_mongo_collection(db_name: str = None, collection_name: str = None):
 # ----------------------------
 # Main Processing Function
 # ----------------------------
-def create_vector_and_store_in_atlas(file_inputs: List[str], db_name: str = None, collection_name: str = None, embedding_model=None):
+def create_vector_and_store_in_atlas(
+    file_inputs: List[str],
+    db_name: str = None,
+    collection_name: str = None,
+    embedding_model=None,
+    original_filenames: List[str] = None  # ✅ Add this
+):
     if embedding_model is None:
         logger.info("Loading HuggingFace embedding model...")
         embedding_model_name = "sentence-transformers/all-MiniLM-L12-v2"
@@ -71,7 +77,7 @@ def create_vector_and_store_in_atlas(file_inputs: List[str], db_name: str = None
         embedding_model_name = getattr(embedding_model, 'model_name', 'provided_model')
 
     logger.info("Generating vectors and extracting metadata from files...")
-    vector, doc_ids = get_vectors_and_details(file_inputs, embedding_model=embedding_model)
+    vector, doc_ids = get_vectors_and_details(file_inputs, embedding_model=embedding_model, original_filenames=original_filenames)
     logger.info(f"Generated embeddings for {len(vector)} chunks")
 
     collection, used_collection_name = get_mongo_collection(db_name, collection_name)
@@ -80,7 +86,7 @@ def create_vector_and_store_in_atlas(file_inputs: List[str], db_name: str = None
     inserted_count = insert_chunks_to_db(vector, collection)
     logger.info(f"✅ Inserted {inserted_count} new chunks into MongoDB collection '{used_collection_name}'.")
 
-    # Print a summary
+    # Build summary
     unique_file_names = list({e["file_name"] for e in vector})
     summary = {
         "num_chunks": len(vector),
@@ -88,11 +94,13 @@ def create_vector_and_store_in_atlas(file_inputs: List[str], db_name: str = None
         "file_names": unique_file_names,
         "embedding_model": embedding_model_name,
         "all_unique_ids": doc_ids,
+        "original_filenames": original_filenames  # ✅ Add to summary if needed
     }
 
     logger.info("Summary of operation:")
     logger.info(json.dumps(summary, indent=2, ensure_ascii=False))
     return summary
+
 # ----------------------------
 # Example usage (uncomment to run directly)
 # ----------------------------

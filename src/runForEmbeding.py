@@ -6,7 +6,7 @@ from utility import (
     build_embedding_json_for_db
 )
 
-def get_vectors_and_details(file_inputs, embedding_model=None):
+def get_vectors_and_details(file_inputs, embedding_model=None, original_filenames=None):
     # 📂 Step 1: Define input source(s)
     # file_inputs is passed as parameter now
 
@@ -37,7 +37,7 @@ def get_vectors_and_details(file_inputs, embedding_model=None):
     # 🧱 Step 6: Build embedding data for DB
     print("[*] Building embedding JSON for DB...")
     embedding_json, doc_ids = build_embedding_json_for_db(
-        chunks, embeddings, embedding_model_name=model_name
+        chunks, embeddings, embedding_model_name=model_name, original_filenames=original_filenames
     )
 
     print(f"[✅] Processed {len(embedding_json)} embeddings from {len(doc_ids)} documents.")
