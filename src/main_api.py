@@ -11,6 +11,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 import logging
 import os
 import tempfile
+from fastapi.middleware.cors import CORSMiddleware
 
 # -----------------------------
 # Logging Setup
@@ -22,6 +23,14 @@ logger = logging.getLogger(__name__)
 # FastAPI App Setup
 # -----------------------------
 app = FastAPI()
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or specify a list like ["https://example.com"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 embedding_model = None  # will be set on startup
 MONGODB_URI = os.environ.get("MONGODB_URI")
 # -----------------------------
