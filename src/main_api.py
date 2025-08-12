@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # -----------------------------
 app = FastAPI()
 embedding_model = None  # will be set on startup
-
+MONGODB_URI = os.environ.get("MONGODB_URI")
 # -----------------------------
 # Validation Error Handler
 # -----------------------------
@@ -74,9 +74,75 @@ def load_model_on_startup():
 # Utility: Map class & subject
 # -----------------------------
 def map_to_db_and_collection(class_: str, subject: str):
-    db_name = class_.strip().lower()
-    collection_name = subject.strip().lower()
+    db_name = class_.strip()
+    collection_name = subject.strip()
     return db_name, collection_name
+
+# -----------------------------
+# Environment Info Route
+# -----------------------------
+@app.get("/env_info")
+def get_environment_info():
+    return {
+        "mongodb_uri_set": bool(os.environ.get("MONGODB_URI")),
+        "groq_api_key_set": bool(os.environ.get("GROQ_API_KEY")),
+        "db_name": os.environ.get("DB_NAME", "Not set"),
+        "collection_name": os.environ.get("COLLECTION_NAME", "Not set"),
+        "embedding_model_loaded": embedding_model is not None
+    }
+
+# -----------------------------
+# Database Status Check Route
+# -----------------------------
+@app.get("/db_status/{class_}/{subject}")
+def check_database_status(class_: str, subject: str):
+    try:
+        from pymongo import MongoClient
+        from pymongo.errors import OperationFailure
+        
+        db_name, collection_name = map_to_db_and_collection(class_, subject)
+        
+        # Use the same MongoDB URI as SimilaritySearch
+        mongodb_uri = MONGODB_URI
+        
+        client = MongoClient(mongodb_uri)
+        
+        # Check database existence
+        db_exists = db_name in client.list_database_names()
+        if not db_exists:
+            return {
+                "status": "error",
+                "message": f"Database '{db_name}' does not exist",
+                "available_databases": client.list_database_names()
+            }
+        
+        # Check collection existence
+        collection_exists = collection_name in client[db_name].list_collection_names()
+        if not collection_exists:
+            return {
+                "status": "error",
+                "message": f"Collection '{collection_name}' does not exist in database '{db_name}'",
+                "available_collections": client[db_name].list_collection_names()
+            }
+        
+        # Check document count
+        doc_count = client[db_name][collection_name].count_documents({})
+        
+        return {
+            "status": "success",
+            "database": db_name,
+            "collection": collection_name,
+            "document_count": doc_count,
+            "available_databases": client.list_database_names(),
+            "available_collections": client[db_name].list_collection_names()
+        }
+        
+    except Exception as e:
+        logger.error(f"[!] Error checking database status: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to check database status: {str(e)}"
+        }
 
 # -----------------------------
 # Health Check

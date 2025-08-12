@@ -1,0 +1,17 @@
+Name - Abhishek Kumar
+Age - 23
+Height - 5ft 1 inch
+Weight - 47.5kg
+BMR [from BCA test] - 1184 kcal
+Fat % - 20.4
+Lifestyle [Active, Sedentary, Moderate] - software Engineer,[Sedentary]
+Known Medical Condition [if any] - NO
+Food Allergic [if any] - NO
+Food preferences [If any like tea or etc..] - NO
+Veg\Non-Veg\Eggetarian - Veg
+Meal frequency possible [in number]- 3
+Sleep time - 12 am
+Wakeup-time- 6 am
+Workout-timing - 7 - 8
+Fitness Goal - Reduce body fat while maintaining or slightly increasing lean muscle mass and increase Skeletal muscle mass. 
+Skeletal muscle mass(kg) - 20.7

@@ -14,7 +14,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # -----------------------------
 # Default Configuration
 # -----------------------------
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://...")  # Masked here for safety
+MONGODB_URI = os.environ.get("MONGODB_URI")
 DEFAULT_DB_NAME = os.environ.get("DB_NAME", "class10")
 DEFAULT_COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "math")
 VECTOR_INDEX_NAME = "vector_index"
@@ -88,9 +88,43 @@ def retrieve_and_generate_llm_response(query: str, db_name: str = None, collecti
     db_name = db_name or DEFAULT_DB_NAME
     collection_name = collection_name or DEFAULT_COLLECTION_NAME
 
-    logger.info(f"[*] Connecting to MongoDB: {db_name}.{collection_name}...")
-    client = MongoClient(MONGODB_URI)
-    collection = client[db_name][collection_name]
+    logger.info(f"[*] Processing query: '{query}' for {db_name}.{collection_name}...")
+    
+    # Check if GROQ API key is available
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    if not groq_api_key:
+        logger.error("[!] GROQ_API_KEY environment variable is not set.")
+        return "GROQ API key is not configured. Please set the GROQ_API_KEY environment variable."
+    
+    try:
+        logger.info(f"[*] Connecting to MongoDB: {db_name}.{collection_name}...")
+        client = MongoClient(MONGODB_URI)
+        
+        # Check if database exists
+        if db_name not in client.list_database_names():
+            logger.error(f"[!] Database '{db_name}' does not exist.")
+            return f"Database '{db_name}' does not exist. Please create vectors for this class first."
+        
+        # Check if collection exists
+        if collection_name not in client[db_name].list_collection_names():
+            logger.error(f"[!] Collection '{collection_name}' does not exist in database '{db_name}'.")
+            return f"Collection '{collection_name}' does not exist in database '{db_name}'. Please create vectors for this subject first."
+        
+        collection = client[db_name][collection_name]
+        
+        # Check if collection has documents
+        doc_count = collection.count_documents({})
+        if doc_count == 0:
+            logger.error(f"[!] Collection '{collection_name}' is empty.")
+            return f"Collection '{collection_name}' is empty. Please create vectors for this subject first."
+        
+        logger.info(f"[+] Connected to MongoDB: {db_name}.{collection_name} (contains {doc_count} documents)")
+    except OperationFailure as e:
+        logger.error(f"[!] MongoDB connection failed: {e}")
+        return "Failed to connect to MongoDB. Please check your connection string and credentials."
+    except Exception as e:
+        logger.error(f"[!] An unexpected error occurred during MongoDB connection: {e}")
+        return "An unexpected error occurred during MongoDB connection."
 
     if embedding_model is None:
         logger.info("[*] Loading embedding model...")
@@ -116,12 +150,16 @@ def retrieve_and_generate_llm_response(query: str, db_name: str = None, collecti
     except Exception as e:
         logger.warning(f"[!] Atlas vector search failed: {e}")
         logger.info("[*] Falling back to in-memory similarity search...")
-        results = find_similar_chunks_in_memory(query_embedding, collection)
-        logger.info(f"[+] Retrieved {len(results)} chunks from in-memory similarity.")
+        try:
+            results = find_similar_chunks_in_memory(query_embedding, collection)
+            logger.info(f"[+] Retrieved {len(results)} chunks from in-memory similarity.")
+        except Exception as fallback_error:
+            logger.error(f"[!] In-memory similarity search also failed: {fallback_error}")
+            return "Failed to perform similarity search. Please check your database and try again."
 
     if not results:
         logger.warning("[!] No similar documents found.")
-        return
+        return "No similar documents found for the query. Please ensure that vectors have been created for this class and subject."
 
     print("--------------------------------------------------------- \n")
     for idx, doc in enumerate(results):
@@ -132,12 +170,22 @@ def retrieve_and_generate_llm_response(query: str, db_name: str = None, collecti
 
     result_string = "\n---\n".join(doc["chunk_text"] for doc in results if "chunk_text" in doc)
 
-    logger.info("[*] Sending top chunks to LLM...")
-    response_from_groq = generate_response_from_groq(input_text=result_string, query=query)
+    if not result_string.strip():
+        logger.warning("[!] No text content found in results.")
+        return "No text content found in the retrieved documents."
 
-    # print("\n--- LLM Response ---")
-    # print(response_from_groq)
-    return response_from_groq
+    logger.info("[*] Sending top chunks to LLM...")
+    try:
+        response_from_groq = generate_response_from_groq(input_text=result_string, query=query)
+        if response_from_groq:
+            logger.info("[+] LLM response generated successfully.")
+            return response_from_groq
+        else:
+            logger.warning("[!] LLM returned empty response.")
+            return "The AI model returned an empty response. Please try again."
+    except Exception as e:
+        logger.error(f"[!] Error generating LLM response: {e}")
+        return f"Failed to generate AI response: {str(e)}"
 
 # -----------------------------
 # Entry Point (optional)
